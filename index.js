@@ -1,23 +1,34 @@
 'use strict';
-
 // canvas の読み込み
 const gameArea = document.getElementById('game-area');
 const gameArea_ctx = gameArea.getContext('2d');
 
-gameArea_ctx.font = "13px monospace"
+// スクリーンサイズ
+const SCREEN_W = gameArea.width;
+const SCREEN_H = gameArea.height;
 
-// dealer Area
-gameArea_ctx.fillStyle = "gray";
-gameArea_ctx.fillRect(400, 230, 500, 300);
+// Game Area
+gameArea_ctx.fillStyle = "#006400";
+gameArea_ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
 
-// user Area
-gameArea_ctx.fillRect(400, 600, 500, 300);
+// Game Area Stroke
+gameArea_ctx.strokeStyle = "#583822";
+gameArea_ctx.lineWidth = 30;
+gameArea_ctx.strokeRect(0, 0, SCREEN_W, SCREEN_H);
 
-// 画像サイズ
+// トランプ画像サイズ
 const dx = 712;
 const dy = 1008;
 
-// TODO choice card が読み込まれた後、new image() が一つ作成される。
+// トランプ縮小倍率
+const shrink = 7;
+
+// game tempo
+const gameTempo = 1000;
+
+// game over flag
+let gameOver = false;
+
 // 画像読み込み
 const srcs = [];
 
@@ -28,17 +39,10 @@ for(let i=1; i<=13; i++){
   srcs.push(`./trump-image/hart${i}.png`);
 }
 
-const dealer = new Image();
-dealer.src = './trump-image/casino_dealer_man2.png';
-dealer.onload = () => {
-  gameArea_ctx.drawImage(dealer, 450, 10);
-}
-
-
-
 // 画像描画
-function createImage(isUser){
+function createImage(isUser, isOmote){
   if(isUser){
+    // user image
     const userImages = [];
 
     for(let i in userCards){
@@ -48,13 +52,14 @@ function createImage(isUser){
       userImages[i] = new Image();
       userImages[i].src = drawUserImage;
       userImages[i].onload = () => {
-        gameArea_ctx.drawImage(userImages[i], 150 * i + 500, 700, dx/7, dy/7);
+        gameArea_ctx.drawImage(userImages[i], dx/shrink * i + SCREEN_W/4, SCREEN_H/2 + 50, dx/shrink, dy/shrink);
       }
     }
     
   }else{
+    // dealer image
     const dealerImages = [];
-
+    
     // trump の表
     const omote = new Image();
     omote.src = "./trump-image/omote.png";
@@ -66,10 +71,10 @@ function createImage(isUser){
       dealerImages[i] = new Image();
       dealerImages[i].src = drawDealerImage;
       dealerImages[i].onload = () => {
-        if(i == 1){
-          gameArea_ctx.drawImage(omote, 150 * i + 500, 280, dx/7, dy/7);
+        if(i == 1 && isOmote){
+          gameArea_ctx.drawImage(omote, dx/shrink * i + SCREEN_W/4, SCREEN_H/2 - dy/5 + 10 , dx/shrink, dy/shrink);
         }else{
-          gameArea_ctx.drawImage(dealerImages[i], 150 * i + 500, 280, dx/7, dy/7);
+          gameArea_ctx.drawImage(dealerImages[i], dx/shrink * i + SCREEN_W/4, SCREEN_H/2 - dy/5 + 10 , dx/shrink, dy/shrink);
         }
       }
     }
@@ -97,31 +102,6 @@ marks.forEach(mark => {
 
 decks.shuffle();
 
-// 表示用カード
-
-const displayCards = decks.map(card => {
-  const container = new Object;
-  container.mark = card.mark;
-  switch(card.value){
-    case 1:
-      container.value = "A" 
-      break;
-    case 11:
-      container.value = "J" 
-      break;
-    case 12:
-      container.value = "Q" 
-      break;
-    case 13:
-      container.value = "K" 
-      break;
-    default:
-      container.value = String(card.value);
-      break;
-  }
-  return container;
-});
-
 
 // 計算用カード
 const calculateCards = decks.map(card => {
@@ -131,38 +111,32 @@ const calculateCards = decks.map(card => {
   return temp;
 });
 
-
 // 所持カード
 const userCards = new Array;
-const userDisplayCards = new Array;
 const userCalculateCards = new Array;
 const dealerCards = new Array;
-const dealerDisplayCards = new Array;
 const dealerCalculateCards = new Array;
-
-// game over フラグ
-let gameOver = false;
-let nowScore = 0;
 
 // 山札の何枚目か
 let n = 0;
-let stop = false;
 
 // ヒット処理 
 function drawCard(isUser) {
-  $("#hit").on('click', () => {
-    choiceCard(n, isUser);
-    gameArea_ctx.clearRect(750, 0, 900, 150);
-    gameArea_ctx.fillText(`現在のあなたの得点は、${calculate(true)} 点です。` , 750, 100);
-    gameArea_ctx.fillText(`カードを引きますか？` , 750, 120);
-    if( isOver(true) ) {
-      Object.seal(userCards);
-      Object.seal(dealerCards);
-      gameArea_ctx.clearRect(750, 0, 900, 150);
-      gameArea_ctx.fillText(`現在のあなたの得点は、${calculate(true)} 点です。` , 750, 100);
-      gameArea_ctx.fillText(`21点を超えたのであなたの負けです` , 750, 120);
-    }
-  });
+      $("#hit").on('click', async function(){
+        await choiceCard(n, isUser);
+        if( isOver(true) ) {
+          Object.seal(userCards);
+          Object.seal(dealerCards);
+          await setText(`現在のあなたの得点は、${calculate(true)} 点です`);
+          await setText(`21点を超えたのであなたの負けです`);
+        } else if(calculate(true) === 21 ) {
+          await setText(`現在のあなたの得点は${calculate(true)}点です。`);
+          await setText(`スタンドを押すと、ディーラーのターンになります`);
+        } else {
+          await setText(`現在のあなたの得点は${calculate(true)}点です。`);
+          await setText(`続けて、カードを引きますか？`);
+        }
+      });
 }
 
 // スタンド処理
@@ -171,8 +145,8 @@ function stopCard() {
     $("#stand").on('click', () => {
       Object.seal(userCards);
       resolve();
-    });
-  })
+      }
+  )});
 }
 
 // バーストしたか判定する
@@ -182,111 +156,130 @@ function isOver(isUser) {
   } 
 }
 
-
-
-
-function dealerTurn() {
-    gameArea_ctx.clearRect(750, 0, 900, 150);
-    gameArea_ctx.fillText(`ディーラーの番です。` , 750, 100);
-    gameArea_ctx.fillText(`現在ディーラーの得点は、${calculate(false)}点です。` , 750, 120);
+// ディーラーの処理
+async function dealerTurn() {
+    await setText(`ディーラーのターンです`);
+    await drawDelerSecondImage();
+    await setText(`現在ディーラーの得点は、${calculate(false)}点です。`);
 
   while(calculate(false) < 17) {
-    choiceCard(n, false);
-    drawDelerSecondImage();
-    gameArea_ctx.clearRect(750, 0, 900, 150);
-    gameArea_ctx.fillText(`ディーラーの番です。` , 750, 100);
-    gameArea_ctx.fillText(`現在ディーラーの得点は、${calculate(false)}点です。` , 750, 120);
+    await choiceCard(n, false);
+    await setText(`現在ディーラーの得点は、${calculate(false)}点です。`);
   }
-  if( isOver(false)){
-    gameArea_ctx.clearRect(750, 0, 900, 150);
-    gameArea_ctx.fillText(`ディーラーの得点は、${calculate(false)}点です。` , 750, 100);
-    gameArea_ctx.fillText(`あなたの勝ちです。` , 750, 120);
+  if( isOver(false) ){
+    await setText(`ディーラーの得点は、${calculate(false)}点です`);
+    await setText(`ディーラーが21点を超えたので、あなたの勝ちです`);
   }
 }
 
+// ディーラーのテキスト
+function setText(content) {
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      $("p").text(content);
+      resolve();
+    }, gameTempo);
+  })
+}
+
+// ディーラーの2枚目のカードを表示する
+function drawDelerSecondImage() {
+  return new Promise(resolve => {
+    setTimeout(() => {
+      const dealerSecond = new Image();
+      dealerSecond.src = `./trump-image/${dealerCards[1].mark}${dealerCards[1].value}.png`;
+      dealerSecond.onload = () =>{
+      gameArea_ctx.drawImage(dealerSecond, dx/shrink + SCREEN_W/4, SCREEN_H/2 - dy/5 + 10 , dx/shrink, dy/shrink);
+    };  
+      resolve();
+    }, gameTempo)
+  })
+}
+
+// 勝敗判定
+function compareCard() {
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      if(calculate(true) > calculate(false)){
+        setText(`あなたの勝ちです`);
+      }else if(calculate(true) < calculate(false)){
+        setText(`あなたの負けです`);
+      }else  {
+        setText(`引き分けです`);
+      } 
+      resolve();
+    }, gameTempo);
+  });
+}
+
+// 点数計算
+function calculate(isUser) {
+  let nowScore = 0;
+  let Ascore = 0;
+  let inA = false;
+
+  if(isUser) {
+    userCalculateCards.forEach(card => {
+      if(card.value === 1) inA = true;
+      nowScore += card.value;
+    });
+    if( inA ) Ascore = nowScore + 10;
+    if(nowScore > 21) gameOver = true;
+  } else {
+    dealerCalculateCards.forEach(card => {
+      if(card.value === 1) inA = true;
+      nowScore += card.value;
+    });
+    if( inA ) Ascore = nowScore + 10;
+  }
+  if(inA && Ascore <= 21){
+    return Ascore;
+  }else{
+    return nowScore;
+  }
+}
+
+// カード選択
+function choiceCard(i, isUser, isOmote) {
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      if(isUser) {
+        userCards.push(decks[i]);
+        userCalculateCards.push(calculateCards[i]);
+      } else {
+        dealerCards.push(decks[i]);
+        dealerCalculateCards.push(calculateCards[i]);
+      }
+      createImage(isUser, isOmote);
+      n ++;
+      resolve();
+    }, 500)
+  })
+}
+
 // main 部分
-async function main(){
+async function main (){
   // 初期値
-  choiceCard(n, true);
-  choiceCard(n, true);
-  choiceCard(n, false);
-  choiceCard(n, false);
+  await choiceCard(n, true);
+  await choiceCard(n, true);
+  await choiceCard(n, false, true);
+  await choiceCard(n, false, true);
 
   // your turn
-  gameArea_ctx.fillText(`現在のあなたの得点は、${calculate(true)} 点です。` , 750, 100);
-  gameArea_ctx.fillText(`カードを引きますか？` , 750, 120);
+  await setText(`現在のあなたの得点は、${calculate(true)} 点です`);
+  await setText(`カードを引きますか？`);
   drawCard(true);
   await stopCard();
 
-  //TODO ディーラー処理
+  // ディーラー ターン
   if(!isOver(true)){
-    drawDelerSecondImage();
-    dealerTurn();
+    await dealerTurn();
   }
 
-  // TODO 勝負
-  if (!isOver(false)) {
-    setTimeout(() => {
-      compareCard();
-    }, 2000);
+  // 勝負
+  if (!isOver(false) && !isOver(true)) {
+    await compareCard();
   }
 }
 
 main();
-
-function drawDelerSecondImage() {
-  const dealerSecond = new Image();
-  dealerSecond.src = `./trump-image/${dealerCards[1].mark}${dealerCards[1].value}.png`;
-  dealerSecond.onload = () =>{
-    gameArea_ctx.drawImage(dealerSecond, 150 + 500, 280, dx/7, dy/7);
-  } 
-}
-
-function compareCard() {
-  gameArea_ctx.clearRect(750, 0, 900, 150);
-  gameArea_ctx.fillText(`ディーラーの得点は、${calculate(false)}点です。` , 750, 100);
-  gameArea_ctx.fillText(`あなたの得点は、${calculate(true)}点です。` , 750, 120);
-
-  if(calculate(true) > calculate(false)){
-    gameArea_ctx.fillText(`あなたの勝ちです。` , 750, 140);
-  }else if(calculate(true) < calculate(false)){
-    gameArea_ctx.fillText(`あなたの負けです。` , 750, 140);
-  }else  {
-    gameArea_ctx.fillText(`引き分けです` , 750, 140);
-  }
-}
-    
-
-
-// 点数計算
-function calculate(isUser) {
-  nowScore = 0;
-  if(isUser) {
-    userCalculateCards.forEach(card => {
-      nowScore += card.value;
-    });
-    if(nowScore > 21) {gameOver = true};
-  } else {
-    dealerCalculateCards.forEach(card => {
-      nowScore += card.value;
-    });
-  }
-  return nowScore;
-}
-
-// カード選択
-function choiceCard(i, isUser) {
-  if(isUser) {
-    userCards.push(decks[i]);
-    userDisplayCards.push(displayCards[i]);
-    userCalculateCards.push(calculateCards[i]);
-  } else {
-    dealerCards.push(decks[i]);
-    dealerDisplayCards.push(displayCards[i]);
-    dealerCalculateCards.push(calculateCards[i]);
-  }
-  createImage(isUser);
-  n ++;
-}
-
-
